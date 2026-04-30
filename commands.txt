@@ -1,0 +1,145 @@
+================================================================
+SOCIALMEDIA PROJECT - COMMANDS & INSTRUCTIONS
+================================================================
+
+----------------------------------------------------------------
+STARTING THE PROJECT
+----------------------------------------------------------------
+
+Full start with rebuild (first time or after code changes):
+    docker compose up --build
+
+Start in background (recommended - gives terminal back):
+    docker compose up --build -d
+
+Start without rebuild (faster, use after first build):
+    docker compose up -d
+
+----------------------------------------------------------------
+STOPPING THE PROJECT
+----------------------------------------------------------------
+
+STOP vs DOWN - know the difference:
+
+docker compose stop
+    - Pauses all containers
+    - Data is PRESERVED in database
+    - Fast to restart with: docker compose start
+    - Use this normally
+
+docker compose down
+    - Stops AND removes containers
+    - Data is PRESERVED (volumes stay)
+    - Slower restart, needs full rebuild
+    - Use when you want a clean slate
+
+docker compose down -v
+    - DANGER: Deletes containers AND database volume
+    - ALL DATA IS LOST (users, posts, everything wiped)
+    - Only use if you want completely fresh start
+
+----------------------------------------------------------------
+STOPPING A SINGLE SERVICE (for demo/shutdown test)
+----------------------------------------------------------------
+
+Stop one service (sir's shutdown test):
+    docker compose stop post-service
+    docker compose stop auth-service
+    docker compose stop user-service
+
+Restart that service:
+    docker compose start post-service
+
+See what's running:
+    docker compose ps
+
+----------------------------------------------------------------
+CHECKING LOGS
+----------------------------------------------------------------
+
+See logs of all services:
+    docker compose logs
+
+See logs of one service (live):
+    docker compose logs -f auth-service
+    docker compose logs -f post-service
+    docker compose logs -f user-service
+    docker compose logs -f frontend
+    docker compose logs -f db
+
+----------------------------------------------------------------
+DATABASE - CONNECTING TO POSTGRESQL
+----------------------------------------------------------------
+
+Step 1: Open Docker Desktop
+Step 2: Click on db-1 container
+Step 3: Click "Exec" tab at the top
+Step 4: Run this command:
+
+    psql -U postgres -d socialmedia
+
+Step 5: Now you're inside PostgreSQL. Use these commands:
+
+List all tables:
+    \dt
+
+See all users:
+    SELECT * FROM users;
+
+See all posts:
+    SELECT * FROM posts;
+
+See all profiles:
+    SELECT * FROM profiles;
+
+See all follows:
+    SELECT * FROM follows;
+
+See all likes:
+    SELECT * FROM likes;
+
+Exit PostgreSQL:
+    \q
+
+List all databases:
+    psql -U postgres -l
+
+----------------------------------------------------------------
+DEMO - SHUTDOWN TEST (what to show sir)
+----------------------------------------------------------------
+
+1. Show app working at http://localhost
+2. Show all 6 containers running in Docker Desktop
+3. Open terminal and run:
+       docker compose stop post-service
+4. Refresh browser - feed goes down but login still works
+5. Say: "Sir, the Auth service is still running independently.
+   The failure of the Post microservice did not crash the
+   Authentication system. This is the core benefit of
+   microservices over a monolith."
+6. Restart it:
+       docker compose start post-service
+
+----------------------------------------------------------------
+SHARING WITH LAB PCs (same WiFi network)
+----------------------------------------------------------------
+
+1. Run: ipconfig
+2. Find IPv4 Address (looks like 192.168.x.x)
+3. Tell others to open: http://192.168.x.x
+4. Everyone on same WiFi can access your app
+
+----------------------------------------------------------------
+CONTAINERS IN THIS PROJECT
+----------------------------------------------------------------
+
+Container       Port    What it does
+-----------     ----    ------------
+nginx-1         :80     API gateway, serves frontend
+frontend-1      -       React + Vite UI
+auth-service    :3001   Register, login, JWT tokens
+post-service    :3002   Create, read, delete posts
+user-service    :3003   Profiles, follow/unfollow
+db-1            :5432   PostgreSQL database
+
+================================================================
