@@ -66,6 +66,38 @@ services:
     networks:
       - app-network
 
+  notification-service:
+    build: ./notification-service
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: socialmedia
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: supersecretjwt123
+      PORT: 3005
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  dm-service:
+    build: ./dm-service
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: socialmedia
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: supersecretjwt123
+      PORT: 3004
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
   frontend:
     build: ./frontend
     networks:
@@ -81,6 +113,8 @@ services:
       - auth-service
       - post-service
       - user-service
+      - notification-service
+      - dm-service
       - frontend
     networks:
       - app-network

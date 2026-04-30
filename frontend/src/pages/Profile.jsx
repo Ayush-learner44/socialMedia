@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { postsAPI, usersAPI } from '../api'
 
@@ -128,22 +128,38 @@ export default function Profile() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <Avatar name={profile.username} size={72} />
           {!isOwnProfile && (
-            <button
-              onClick={handleFollow}
-              disabled={followLoading}
-              style={{
-                padding: '0.5rem 1.125rem',
-                background: isFollowing ? 'none' : '#e7e9ea',
-                border: isFollowing ? '1px solid #e7e9ea' : 'none',
-                borderRadius: '9999px',
-                color: isFollowing ? '#e7e9ea' : '#000',
-                fontWeight: 700,
-                fontSize: '0.9375rem',
-                opacity: followLoading ? 0.6 : 1,
-              }}
-            >
-              {isFollowing ? 'Unfollow' : 'Follow'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={handleFollow}
+                disabled={followLoading}
+                style={{
+                  padding: '0.5rem 1.125rem',
+                  background: isFollowing ? 'none' : '#e7e9ea',
+                  border: isFollowing ? '1px solid #e7e9ea' : 'none',
+                  borderRadius: '9999px',
+                  color: isFollowing ? '#e7e9ea' : '#000',
+                  fontWeight: 700,
+                  fontSize: '0.9375rem',
+                  opacity: followLoading ? 0.6 : 1,
+                }}
+              >
+                {isFollowing ? 'Unfollow' : 'Follow'}
+              </button>
+              <Link
+                to={`/dm/${userId}`}
+                style={{
+                  padding: '0.5rem 1.125rem',
+                  background: 'none',
+                  border: '1px solid #2f3336',
+                  borderRadius: '9999px',
+                  color: '#e7e9ea',
+                  fontWeight: 700,
+                  fontSize: '0.9375rem',
+                }}
+              >
+                Message
+              </Link>
+            </div>
           )}
         </div>
 

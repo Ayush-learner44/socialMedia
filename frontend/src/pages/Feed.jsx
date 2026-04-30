@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { postsAPI } from '../api'
+import { postsAPI, notificationsAPI } from '../api'
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -131,11 +131,17 @@ export default function Feed() {
   const [likedPosts, setLikedPosts] = useState(new Set())
   const [content, setContent] = useState('')
   const [posting, setPosting] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [showNotifs, setShowNotifs] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchPosts()
-    const interval = setInterval(fetchPosts, 3000)
+    fetchNotifications()
+    const interval = setInterval(() => {
+      fetchPosts()
+      fetchNotifications()
+    }, 3000)
     return () => clearInterval(interval)
   }, [])
 
@@ -144,6 +150,20 @@ export default function Feed() {
       const data = await postsAPI.getAll(token)
       if (Array.isArray(data)) setPosts(data)
     } catch {}
+  }
+
+  const fetchNotifications = async () => {
+    try {
+      const data = await notificationsAPI.getAll(token)
+      if (Array.isArray(data)) setNotifications(data)
+    } catch {}
+  }
+
+  const handleNotifClick = async (notif) => {
+    try { await notificationsAPI.markRead(notif.from_user_id, token) } catch {}
+    setNotifications((prev) => prev.filter((n) => n.from_user_id !== notif.from_user_id))
+    setShowNotifs(false)
+    navigate(`/dm/${notif.from_user_id}`)
   }
 
   const handlePost = async (e) => {
@@ -211,6 +231,101 @@ export default function Feed() {
           >
             @{user?.username}
           </Link>
+
+          {/* Bell icon */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowNotifs((v) => !v)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '1.125rem',
+                padding: '0.25rem',
+                position: 'relative',
+                color: notifications.length > 0 ? '#e7e9ea' : '#71767b',
+              }}
+              title="Notifications"
+            >
+              🔔
+              {notifications.length > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    background: '#f4212e',
+                    borderRadius: '50%',
+                    width: 16,
+                    height: 16,
+                    fontSize: '0.625rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                  }}
+                >
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+
+            {showNotifs && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 'calc(100% + 8px)',
+                  background: '#16181c',
+                  border: '1px solid #2f3336',
+                  borderRadius: '12px',
+                  width: 280,
+                  zIndex: 100,
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #2f3336', fontWeight: 700, fontSize: '0.9375rem' }}>
+                  Notifications
+                </div>
+                {notifications.length === 0 ? (
+                  <p style={{ padding: '1.5rem 1rem', color: '#71767b', textAlign: 'center', fontSize: '0.875rem' }}>
+                    You're all caught up!
+                  </p>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      onClick={() => handleNotifClick(n)}
+                      style={{
+                        padding: '0.875rem 1rem',
+                        borderBottom: '1px solid #2f3336',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#1e2124')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <span style={{ fontSize: '1.25rem' }}>💬</span>
+                      <div>
+                        <p style={{ fontSize: '0.9375rem', color: '#e7e9ea' }}>
+                          New message from{' '}
+                          <strong style={{ color: '#1d9bf0' }}>@{n.from_username}</strong>
+                        </p>
+                        <p style={{ fontSize: '0.75rem', color: '#71767b', marginTop: '0.125rem' }}>
+                          {timeAgo(n.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleLogout}
             style={{

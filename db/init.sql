@@ -36,3 +36,23 @@ CREATE TABLE IF NOT EXISTS likes (
   created_at TIMESTAMP DEFAULT NOW(),
   PRIMARY KEY (post_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS messages (
+  id SERIAL PRIMARY KEY,
+  sender_id INTEGER NOT NULL,
+  sender_username VARCHAR(50) NOT NULL,
+  receiver_id INTEGER NOT NULL,
+  receiver_username VARCHAR(50) NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  from_user_id INTEGER NOT NULL,
+  from_username VARCHAR(50) NOT NULL,
+  read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE (user_id, from_user_id)
+);
