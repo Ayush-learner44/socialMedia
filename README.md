@@ -1,6 +1,6 @@
 # SocialApp — Microservices Social Media Platform
 
-A Twitter-style social media app built as a microservices architecture term project. Users can register, post, follow each other, and view profiles — all served through a single nginx gateway that routes to independent backend services.
+A Twitter-style social media app built as a microservices architecture term project. Users can register, post, like posts, follow each other, send direct messages, and receive notifications — all served through a single nginx gateway that routes to independent backend services.
 
 ---
 
@@ -10,9 +10,11 @@ A Twitter-style social media app built as a microservices architecture term proj
 |---|---|---|---|
 | **nginx** | nginx:alpine | 80 (host) | API gateway + reverse proxy |
 | **auth-service** | Node.js + Express | 3001 | JWT registration & login |
-| **post-service** | Node.js + Express | 3002 | Create, read, delete posts |
+| **post-service** | Node.js + Express | 3002 | Create, read, delete, like posts |
 | **user-service** | Node.js + Express | 3003 | Profiles, follow/unfollow |
-| **frontend** | React + Vite | 80 (internal) | Twitter-style SPA |
+| **dm-service** | Node.js + Express | 3004 | Private direct messages |
+| **notification-service** | Node.js + Express | 3005 | Message notifications |
+| **frontend** | React + Vite | 80 (internal) | Dark-theme SPA |
 | **db** | PostgreSQL 15 | 5432 (internal) | Shared database |
 
 ---
@@ -23,30 +25,28 @@ A Twitter-style social media app built as a microservices architecture term proj
 Browser
    │
    ▼
-┌─────────────────────────────────────┐
-│         nginx  (port 80)            │  ← single entry point
-│         API Gateway / Reverse Proxy │
-└──────────────┬──────────────────────┘
-               │  routes by URL prefix
-       ┌───────┼───────────────┐
-       │       │               │
-       ▼       ▼               ▼
-  /api/auth  /api/posts    /api/users     /*
-       │       │               │           │
-       ▼       ▼               ▼           ▼
-  auth-svc  post-svc      user-svc     frontend
-  :3001     :3002         :3003        :80 (React SPA)
-       │       │               │
-       └───────┴───────────────┘
-                     │
-                     ▼
-             ┌───────────────┐
-             │  PostgreSQL   │  ← shared DB, separate tables
-             │    :5432      │    per service domain
-             └───────────────┘
+┌──────────────────────────────────────────────────┐
+│               nginx  (port 80)                   │
+│          API Gateway / Reverse Proxy             │
+└───┬──────────┬──────────┬──────────┬─────────┬───┘
+    │          │          │          │         │
+/api/auth /api/posts /api/users /api/messages /api/notifications   /*
+    │          │          │          │         │                    │
+    ▼          ▼          ▼          ▼         ▼                    ▼
+auth-svc  post-svc   user-svc   dm-svc   notif-svc           frontend
+ :3001     :3002      :3003      :3004     :3005            :80 (React SPA)
+    │          │          │          │         │
+    └──────────┴──────────┴──────────┴─────────┘
+                               │
+                               ▼
+                      ┌─────────────────┐
+                      │   PostgreSQL    │  ← shared DB
+                      │     :5432       │    separate tables
+                      └─────────────────┘
 
-Inter-service call:
-  auth-service ──(POST on register)──► user-service /internal/create
+Inter-service calls (fire and forget):
+  auth-service ──(on register)──────────────► user-service  /internal/create
+  dm-service   ──(on message sent)──────────► notification-service  /internal/create
 ```
 
 All services communicate over a Docker bridge network (`app-network`) using container name DNS resolution.
@@ -55,22 +55,24 @@ All services communicate over a Docker bridge network (`app-network`) using cont
 
 ## API Endpoints
 
-### Auth Service — `POST /api/auth/...`
+### Auth Service — `/api/auth/...`
 
-| Method | Path | Auth | Body / Notes |
+| Method | Path | Auth | Notes |
 |---|---|---|---|
 | `POST` | `/api/auth/register` | — | `{ username, email, password }` → `{ token, user }` |
-| `POST` | `/api/auth/login` | — | `{ email, password }` → `{ token, user }` |
-| `GET`  | `/api/auth/verify` | Bearer token | Validates JWT → `{ valid, user }` |
+| `POST` | `/api/auth/login` | — | `{ email or username, password }` → `{ token, user }` |
+| `GET`  | `/api/auth/verify` | 🔒 | Validates JWT → `{ valid, user }` |
 
 ### Post Service — `/api/posts/...`
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| `GET`    | `/api/posts` | — | Public feed, 50 most recent posts |
+| `GET`    | `/api/posts` | — | Public feed, 50 most recent posts with like counts |
 | `GET`    | `/api/posts/user/:userId` | — | All posts by a specific user |
 | `POST`   | `/api/posts` | 🔒 | `{ content }` — create a post |
-| `DELETE` | `/api/posts/:id` | 🔒 | Delete own post only |
+| `DELETE` | `/api/posts/:id` | 🔒 | Delete own post |
+| `POST`   | `/api/posts/:id/like` | 🔒 | Like a post → `{ like_count }` |
+| `DELETE` | `/api/posts/:id/like` | 🔒 | Unlike a post → `{ like_count }` |
 
 ### User Service — `/api/users/...`
 
@@ -82,15 +84,32 @@ All services communicate over a Docker bridge network (`app-network`) using cont
 | `DELETE` | `/api/users/:id/follow` | 🔒 | Unfollow user `:id` |
 | `GET`    | `/api/users/:id/is-following/:targetId` | 🔒 | `{ following: true/false }` |
 
+### DM Service — `/api/messages/...`
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| `GET`  | `/api/messages/conversations` | 🔒 | List all conversations with last message |
+| `GET`  | `/api/messages/:userId` | 🔒 | Full conversation with a specific user |
+| `POST` | `/api/messages/:userId` | 🔒 | `{ content }` — send a message |
+
+### Notification Service — `/api/notifications/...`
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| `GET` | `/api/notifications` | 🔒 | All unread notifications for current user |
+| `PUT` | `/api/notifications/read-all` | 🔒 | Mark all notifications as read |
+| `PUT` | `/api/notifications/:fromUserId/read` | 🔒 | Mark notifications from one user as read |
+
 > 🔒 = requires `Authorization: Bearer <token>` header
 
 ### Frontend (React Router)
 
 | Path | Notes |
 |---|---|
-| `/login` | Login + Register tabs |
-| `/feed` | Protected — post feed with compose box |
-| `/profile/:userId` | Protected — user profile, follow button |
+| `/login` | Login (email or username) + Register tabs |
+| `/feed` | Protected — post feed, compose box, bell icon for notifications |
+| `/profile/:userId` | Protected — profile, follow button, Message button |
+| `/dm/:userId` | Protected — direct message chat screen |
 | `/*` | Redirects to `/feed` |
 
 ---
@@ -100,15 +119,23 @@ All services communicate over a Docker bridge network (`app-network`) using cont
 Single PostgreSQL instance, logically separated by table:
 
 ```sql
--- owned by auth-service
-users     (id, username, email, password_hash, created_at)
+-- auth-service
+users         (id, username, email, password_hash, created_at)
 
--- owned by post-service
-posts     (id, user_id, username, content, created_at)
+-- post-service
+posts         (id, user_id, username, content, created_at)
+likes         (post_id, user_id, created_at)  ← PK on both cols
 
--- owned by user-service
-profiles  (id, user_id, username, bio, avatar_url, created_at)
-follows   (follower_id, following_id, created_at)
+-- user-service
+profiles      (id, user_id, username, bio, avatar_url, created_at)
+follows       (follower_id, following_id, created_at)
+
+-- dm-service
+messages      (id, sender_id, sender_username, receiver_id, receiver_username, content, created_at)
+
+-- notification-service
+notifications (id, user_id, from_user_id, from_username, read, created_at)
+              ← UNIQUE on (user_id, from_user_id) — one notification per sender
 ```
 
 ---
@@ -123,45 +150,45 @@ follows   (follower_id, following_id, created_at)
 ```bash
 git clone <repo-url>
 cd SocialMedia
-docker-compose up --build
+docker-compose up --build -d
 ```
 
-> First run takes ~2 minutes — Docker pulls images and builds the React app.  
-> Subsequent runs (without `--build`) start in seconds.
+> First run takes ~3 minutes — Docker pulls images and builds the React app.  
+> Watch logs with: `docker-compose logs -f`  
+> When you see all 5 services print "running on port ...", open the app.
 
 Open **http://localhost** in your browser.
 
 ### Stop
 
 ```bash
-# Stop containers but keep data
-Ctrl+C
+# Stop containers, keep database data
 docker-compose down
 
-# Stop AND wipe the database volume (full reset)
+# Stop AND wipe all data (full reset)
 docker-compose down -v
 ```
 
 ### Useful commands
 
 ```bash
-# View logs for a specific service
-docker-compose logs -f auth-service
+# Logs for a specific service
+docker-compose logs -f dm-service
 
-# Check all running containers
+# Check status of all containers
 docker-compose ps
 
-# Restart a single service
-docker-compose restart post-service
+# Restart one service without rebuilding
+docker-compose restart notification-service
 ```
 
 ---
 
 ## Fault Isolation Demo (Shutdown Test)
 
-This demonstrates the core microservices property: **each service is independently deployable and failures are isolated**. Run these in a second terminal while the app is up.
+This demonstrates the core microservices property: **failures are isolated — one service going down does not crash the others**. Open a second terminal while the app is running.
 
-### Scenario 1 — Kill the post service
+### Scenario 1 — Kill post-service
 
 ```bash
 docker-compose stop post-service
@@ -169,23 +196,21 @@ docker-compose stop post-service
 
 | Feature | Status |
 |---|---|
-| Login / Register | ✅ Still works |
-| View profile pages | ✅ Still works |
-| Follow / Unfollow | ✅ Still works |
-| Load feed | ❌ Fails (post-service down) |
-| Create a post | ❌ Fails (post-service down) |
+| Login / Register | ✅ Works |
+| View profiles | ✅ Works |
+| Follow / Unfollow | ✅ Works |
+| Send / receive DMs | ✅ Works |
+| Notifications | ✅ Works |
+| Load feed | ❌ Fails |
+| Create / like posts | ❌ Fails |
 
 ```bash
-# Verify auth-service is unaffected
-curl -s http://localhost/api/auth/verify
-
-# Bring post-service back
-docker-compose start post-service
+docker-compose start post-service   # recover
 ```
 
 ---
 
-### Scenario 2 — Kill the auth service
+### Scenario 2 — Kill auth-service
 
 ```bash
 docker-compose stop auth-service
@@ -193,21 +218,19 @@ docker-compose stop auth-service
 
 | Feature | Status |
 |---|---|
-| Load public feed | ✅ Still works (feed is public) |
-| View profile pages | ✅ Still works |
-| Login / Register | ❌ Fails (auth-service down) |
+| Load feed (public posts) | ✅ Works |
+| View profiles | ✅ Works |
+| Send DMs | ✅ Works |
+| Login / Register | ❌ Fails |
 
 ```bash
-# Feed still loads (no auth needed)
-curl -s http://localhost/api/posts | head -c 200
-
-# Bring it back
+curl -s http://localhost/api/posts   # still returns posts
 docker-compose start auth-service
 ```
 
 ---
 
-### Scenario 3 — Kill the user service
+### Scenario 3 — Kill user-service
 
 ```bash
 docker-compose stop user-service
@@ -215,11 +238,11 @@ docker-compose stop user-service
 
 | Feature | Status |
 |---|---|
-| Login / Register | ✅ Still works |
-| Load feed | ✅ Still works |
-| Create / Delete posts | ✅ Still works |
-| View profile pages | ❌ Fails (user-service down) |
-| Follow / Unfollow | ❌ Fails (user-service down) |
+| Login / Register | ✅ Works |
+| Feed + posts + likes | ✅ Works |
+| DMs + notifications | ✅ Works |
+| View profile pages | ❌ Fails |
+| Follow / Unfollow | ❌ Fails |
 
 ```bash
 docker-compose start user-service
@@ -227,9 +250,47 @@ docker-compose start user-service
 
 ---
 
+### Scenario 4 — Kill dm-service
+
+```bash
+docker-compose stop dm-service
+```
+
+| Feature | Status |
+|---|---|
+| Login / Feed / Profiles | ✅ Works |
+| Likes / Follow | ✅ Works |
+| Send / receive DMs | ❌ Fails |
+| Notifications | ✅ Works (existing ones still show) |
+
+```bash
+docker-compose start dm-service
+```
+
+---
+
+### Scenario 5 — Kill notification-service
+
+```bash
+docker-compose stop notification-service
+```
+
+| Feature | Status |
+|---|---|
+| Everything except notifications | ✅ Works |
+| Bell icon / notification dropdown | ❌ Fails silently |
+
+> DMs still send fine — dm-service fires notifications as fire-and-forget, so it doesn't crash when notification-service is down.
+
+```bash
+docker-compose start notification-service
+```
+
+---
+
 ### Why this matters
 
-In a monolith, any crash takes down the entire app. In this microservices architecture, each service has a **single responsibility** and fails independently. nginx continues to route requests to healthy services, and only the features that depend on the stopped service are affected.
+In a monolith, any crash takes down the entire app. Here each service has a **single responsibility** and fails independently. nginx keeps routing to healthy services, and only the features depending on the stopped service are affected. Services can also be **restarted independently** with zero downtime to the rest of the system.
 
 ---
 
@@ -237,11 +298,11 @@ In a monolith, any crash takes down the entire app. In this microservices archit
 
 ```
 SocialMedia/
-├── docker-compose.yml         # orchestrates all services
+├── docker-compose.yml
 ├── db/
-│   └── init.sql               # table definitions, runs on first boot
+│   └── init.sql                    # all table definitions
 ├── nginx/
-│   └── nginx.conf             # routing rules
+│   └── nginx.conf                  # routes by URL prefix to each service
 ├── auth-service/
 │   ├── Dockerfile
 │   └── src/
@@ -262,15 +323,31 @@ SocialMedia/
 │       ├── db.js
 │       ├── middleware/auth.js
 │       └── routes/users.js
+├── dm-service/
+│   ├── Dockerfile
+│   └── src/
+│       ├── index.js
+│       ├── db.js
+│       ├── middleware/auth.js
+│       └── routes/messages.js
+├── notification-service/
+│   ├── Dockerfile
+│   └── src/
+│       ├── index.js
+│       ├── db.js
+│       ├── middleware/auth.js
+│       └── routes/notifications.js
 └── frontend/
-    ├── Dockerfile             # multi-stage: build → nginx
-    ├── nginx.conf             # SPA fallback to index.html
+    ├── Dockerfile                  # multi-stage: Vite build → nginx
+    ├── nginx.conf                  # SPA fallback to index.html
     └── src/
         ├── App.jsx
+        ├── index.css
         ├── context/AuthContext.jsx
         ├── api/index.js
         └── pages/
             ├── Login.jsx
             ├── Feed.jsx
-            └── Profile.jsx
+            ├── Profile.jsx
+            └── DM.jsx
 ```
