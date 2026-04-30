@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: socialmedia
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth-service:
+    build: ./auth-service
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: socialmedia
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: supersecretjwt123
+      PORT: 3001
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  post-service:
+    build: ./post-service
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: socialmedia
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: supersecretjwt123
+      PORT: 3002
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  user-service:
+    build: ./user-service
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: socialmedia
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: supersecretjwt123
+      PORT: 3003
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - auth-service
+      - post-service
+      - user-service
+      - frontend
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge
